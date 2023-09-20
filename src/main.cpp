@@ -1,96 +1,127 @@
-#include <Arduino.h>
 #include <Servo.h>
+
 #include <DHT.h>
-#include <ESP8266WiFi.h>
-#include <FirebaseESP8266.h>
 
-#define WIFI_SSID "Your_WiFi_SSID"
-#define WIFI_PASSWORD "Your_WiFi_Password"
-#define FIREBASE_HOST "your-firebase-project.firebaseio.com"
-#define FIREBASE_AUTH "your-firebase-auth-token"
+ 
 
-#define DHTPIN 2 // Pin where your DHT sensor is connected
-#define DHTTYPE DHT11 // Change to DHT11 if you're using that sensor
-#define FAN_PIN 5 // Pin for controlling the fan
-#define SERVO_PIN 4 // Pin for controlling the servo
-
-DHT dht(DHTPIN, DHTTYPE);
 Servo servo;
 
-const int TEMP_THRESHOLD = 25; // Adjust this temperature threshold as needed
-const int HUMIDITY_THRESHOLD = 60; // Adjust this humidity threshold as needed
+ 
 
-FirebaseData firebaseData;
-bool fanStatus = false;
+#define motorPinRightDir  0 // D2
 
-void setup()
-{
+#define motorPinRightSpeed 5 // D1
+
+ 
+
+#define DHTPIN 14 // Pin where your DHT11 sensor is connected (D5 on ESP8266)
+
+#define DHTTYPE DHT11 // Specify the DHT sensor type
+
+ 
+
+DHT dht(DHTPIN, DHTTYPE);
+
+ 
+
+int servoOpenAngle = 0;
+
+int servoClosedAngle = 90;
+
+ 
+
+void setup() {
+
+  servo.attach(2); // Attach servo to pin 2 (D4)
+
+  pinMode(motorPinRightDir, OUTPUT);
+
+  pinMode(motorPinRightSpeed, OUTPUT);
+
   Serial.begin(115200);
-  dht.begin();
-  servo.attach(SERVO_PIN);
-  pinMode(FAN_PIN, OUTPUT);
+
   servo.write(90); // Close the hatch initially
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(1000);
-    Serial.println("Connecting to WiFi...");
-  }
-  Serial.println("Connected to WiFi");
+  dht.begin();
 
-  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
-  Firebase.reconnectWiFi(true);
 }
 
-void loop()
-{
-  float temperature = dht.readTemperature();
-  float humidity = dht.readHumidity();
+ 
 
-  if (isnan(temperature) || isnan(humidity))
-  {
-    Serial.println("Failed to read from DHT sensor!");
-    return;
-  }
+void loop() {
+
+  // Read temperature and humidity
+
+  int temperature = dht.readTemperature();
+
+  int humidity = dht.readHumidity();
+
+ 
+
+  // Print temperature and humidity to the serial monitor
 
   Serial.print("Temperature: ");
+
   Serial.print(temperature);
-  Serial.print(" °C, Humidity: ");
+
+  Serial.print("°C, Humidity: ");
+
   Serial.print(humidity);
-  Serial.println(" %");
 
-  // Check temperature and humidity thresholds
-  if (temperature > TEMP_THRESHOLD)
-  {
-    // It's too hot, turn on the fan
-    digitalWrite(FAN_PIN, HIGH);
-    fanStatus = true;
-  }
-  else
-  {
-    // It's not too hot, turn off the fan
-    digitalWrite(FAN_PIN, LOW);
-    fanStatus = false;
+  Serial.println("%");
+
+ 
+
+  if (isnan(temperature) || isnan(humidity)) {
+
+    Serial.println("Failed to read from DHT sensor!");
+
   }
 
-  if (humidity < HUMIDITY_THRESHOLD)
-  {
-    // Humidity is too low, activate the watering system (implement this part)
-    // You may need a relay or transistor to control the water pump
-    // Code for watering goes here
+ 
+
+  // Motor and servo control based on temperature and humidity
+
+  if (temperature >= 26.00 && humidity > 60.00) {
+
+    digitalWrite(motorPinRightDir, 0); // Set motor direction
+
+    analogWrite(motorPinRightSpeed, 1024); // Set motor speed
+
+    delay(2500); // Adjust the delay as needed
+
+    digitalWrite(motorPinRightDir, 1); // Reverse motor direction
+
+    analogWrite(motorPinRightSpeed, 1024); // Set motor speed
+
+    delay(2500); // Adjust the delay as needed
+
+    servo.write(0); // Open the hatch (adjust servo angle as needed)
+
+    delay(2500); // Adjust the delay as needed
+
+    servo.write(90); // Close the hatch (adjust servo angle as needed)
+
+    delay(2500); // Adjust the delay as needed
+
+  } else {
+
+    digitalWrite(motorPinRightDir, 1);
+
+    analogWrite(motorPinRightSpeed, 0);
+
   }
 
-  // Upload data to Firebase
-  Firebase.setString(firebaseData, "/temperature", String(temperature));
-  Firebase.setString(firebaseData, "/humidity", String(humidity));
-  Firebase.setBool(firebaseData, "/fanStatus", fanStatus);
+ 
 
-  if (Firebase.failed())
-  {
-    Serial.println("Firebase upload failed");
-    return;
+  if (humidity > 60.00) {
+
+    servo.write(servoOpenAngle);
+
+  } else {
+
+    servo.write(servoClosedAngle);
+
   }
 
-  delay(5000); // Read and control every 5 seconds (adjust as needed)
 }
