@@ -1,82 +1,96 @@
-#include <Adafruit_Sensor.h>
-#include <DHT.h>
-#include <DHT_U.h>
+#include <Arduino.h>
 #include <Servo.h>
+#include <DHT.h>
+#include <ESP8266WiFi.h>
+#include <FirebaseESP8266.h>
 
-// Pin assignments
-#define DHTPIN 2           // Pin for DHT22 sensor
-#define SERVO_PIN 3        // Pin for servo motor control
-#define FAN_PIN 4          // Pin for fan motor control
-#define WATER_PUMP_PIN 5   // Pin for water pump control
+#define WIFI_SSID "Your_WiFi_SSID"
+#define WIFI_PASSWORD "Your_WiFi_Password"
+#define FIREBASE_HOST "your-firebase-project.firebaseio.com"
+#define FIREBASE_AUTH "your-firebase-auth-token"
 
-// Constants
-#define DHTTYPE DHT11      // DHT sensor type
-#define TEMPERATURE_THRESHOLD 25.0  // Adjust as needed
-#define HUMIDITY_THRESHOLD 60.0     // Adjust as needed
-#define FAN_THRESHOLD 28.0          // Temperature threshold to turn on the fan
-#define WATERING_INTERVAL 60000     // Watering interval in milliseconds (e.g., 1 minute)
+#define DHTPIN 2 // Pin where your DHT sensor is connected
+#define DHTTYPE DHT11 // Change to DHT11 if you're using that sensor
+#define FAN_PIN 5 // Pin for controlling the fan
+#define SERVO_PIN 4 // Pin for controlling the servo
 
-DHT_Unified dht(DHTPIN, DHTTYPE);
+DHT dht(DHTPIN, DHTTYPE);
 Servo servo;
-bool isFanOn = false;
-unsigned long lastWateringTime = 0;
 
-void setup() {
-  Serial.begin(9600);
+const int TEMP_THRESHOLD = 25; // Adjust this temperature threshold as needed
+const int HUMIDITY_THRESHOLD = 60; // Adjust this humidity threshold as needed
 
-  // Initialize sensors
+FirebaseData firebaseData;
+bool fanStatus = false;
+
+void setup()
+{
+  Serial.begin(115200);
   dht.begin();
-
-  // Attach servo
   servo.attach(SERVO_PIN);
-
-  // Set pin modes
   pinMode(FAN_PIN, OUTPUT);
-  pinMode(WATER_PUMP_PIN, OUTPUT);
+  servo.write(90); // Close the hatch initially
 
-  // Connect to Wi-Fi and Firebase here (not included in this example)
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(1000);
+    Serial.println("Connecting to WiFi...");
+  }
+  Serial.println("Connected to WiFi");
+
+  Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
+  Firebase.reconnectWiFi(true);
 }
 
-void loop() {
-  // Read temperature and humidity
-  sensors_event_t event;
-  dht.temperature().getEvent(&event);
-  float temperature = event.temperature;
-  dht.humidity().getEvent(&event);
-  float humidity = event.relative_humidity;
+void loop()
+{
+  float temperature = dht.readTemperature();
+  float humidity = dht.readHumidity();
+
+  if (isnan(temperature) || isnan(humidity))
+  {
+    Serial.println("Failed to read from DHT sensor!");
+    return;
+  }
+
+  Serial.print("Temperature: ");
+  Serial.print(temperature);
+  Serial.print(" °C, Humidity: ");
+  Serial.print(humidity);
+  Serial.println(" %");
 
   // Check temperature and humidity thresholds
-  if (temperature > TEMPERATURE_THRESHOLD) {
-    // If temperature is too high, open the roof hatch (adjust angles accordingly)
-    servo.write(90);
-  } else {
-    // Close the roof hatch if the temperature is within the threshold
-    servo.write(0);
+  if (temperature > TEMP_THRESHOLD)
+  {
+    // It's too hot, turn on the fan
+    digitalWrite(FAN_PIN, HIGH);
+    fanStatus = true;
   }
-
-  // Check humidity and activate the watering system if needed
-  if (humidity < HUMIDITY_THRESHOLD && millis() - lastWateringTime > WATERING_INTERVAL) {
-    // Turn on the water pump for a brief moment
-    digitalWrite(WATER_PUMP_PIN, HIGH);
-    delay(1000);  // Run the pump for 1 second (adjust as needed)
-    digitalWrite(WATER_PUMP_PIN, LOW);
-    lastWateringTime = millis();
-  }
-
-  // Check temperature to control the fan
-  if (temperature > FAN_THRESHOLD) {
-    if (!isFanOn) {
-      // Turn on the fan if the temperature is above the threshold
-      digitalWrite(FAN_PIN, HIGH);
-      isFanOn = true;
-    }
-  } else {
-    // Turn off the fan if the temperature is within the threshold
+  else
+  {
+    // It's not too hot, turn off the fan
     digitalWrite(FAN_PIN, LOW);
-    isFanOn = false;
+    fanStatus = false;
   }
 
-  // Send data to Firebase here (not included in this example)
+  if (humidity < HUMIDITY_THRESHOLD)
+  {
+    // Humidity is too low, activate the watering system (implement this part)
+    // You may need a relay or transistor to control the water pump
+    // Code for watering goes here
+  }
 
-  delay(10000);  // Delay for 10 seconds before the next reading
+  // Upload data to Firebase
+  Firebase.setString(firebaseData, "/temperature", String(temperature));
+  Firebase.setString(firebaseData, "/humidity", String(humidity));
+  Firebase.setBool(firebaseData, "/fanStatus", fanStatus);
+
+  if (Firebase.failed())
+  {
+    Serial.println("Firebase upload failed");
+    return;
+  }
+
+  delay(5000); // Read and control every 5 seconds (adjust as needed)
 }
