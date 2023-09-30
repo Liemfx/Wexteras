@@ -25,11 +25,11 @@ Servo servo;
 
  
 
-#define motorPinRightDir  0 // D2
+#define motorPinRightDir  D2 // D2
 
-#define motorPinRightSpeed 5 // D1 
+#define motorPinRightSpeed D1 // D1 
 
-#define DHTPIN 14 // Pin where your DHT11 sensor is connected (D5 on ESP8266)
+#define DHTPIN D5 // Pin where your DHT11 sensor is connected (D5 on ESP8266)
 
 #define DHTTYPE DHT11 // Specify the DHT sensor type
 
@@ -39,10 +39,13 @@ DHT dht(DHTPIN, DHTTYPE);
 
  
 
-int servoOpenAngle = 90;
+int servoOpenAngle = 180;
 
 int servoClosedAngle = 0;
 
+bool luckaOpen = false;
+
+bool flaktPa = false;
  
 
 void setup() {
@@ -95,14 +98,8 @@ void loop() {
 
 
   int temperature = dht.readTemperature();
-
   int humidity = dht.readHumidity();
-
- Firebase.RTDB.setInt(&fbdo, "dht/temperature", temperature); 
- Firebase.RTDB.setInt(&fbdo, "dht/humidity", humidity);   
-
-  Serial.print("Temperature: ");
-
+  
   Serial.print(temperature);
 
   Serial.print("°C, Humidity: ");
@@ -111,6 +108,13 @@ void loop() {
 
   Serial.println("%");
 
+ Firebase.RTDB.setInt(&fbdo, "dht/temperature", temperature); 
+ Firebase.RTDB.setInt(&fbdo, "dht/humidity", humidity);   
+ Firebase.RTDB.setBool(&fbdo, "dht/luckaopen", luckaOpen);   
+ Firebase.RTDB.setBool(&fbdo, "dht/flaktpa", flaktPa); 
+  Serial.print("Temperature: ");
+
+  
  
 
   if (isnan(temperature) || isnan(humidity)) {
@@ -127,8 +131,9 @@ void loop() {
 
     digitalWrite(motorPinRightDir, 1); // Set motor direction
 
-    analogWrite(motorPinRightSpeed, 1024); // Set motor 
+    analogWrite(motorPinRightSpeed, 512); // Set motor 
     
+    flaktPa = true;
   
   } else {
 
@@ -136,6 +141,7 @@ void loop() {
 
     analogWrite(motorPinRightSpeed, 0);
 
+    flaktPa = false;
   }
 
  
@@ -143,12 +149,12 @@ void loop() {
   if (humidity > 60) {
 
     servo.write(servoOpenAngle);
-
+    luckaOpen = true;
   } 
   else {
 
     servo.write(servoClosedAngle);
-
+    luckaOpen = false;
   }
 
 
